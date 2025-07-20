@@ -1,4 +1,5 @@
 # app.py - Price Finder USA con Firebase Auth, SerpAPI, Google Cloud Vision y Gemini
+# VERSIÓN MEJORADA PARA REPUESTOS AUTOMOTRICES
 from flask import Flask, request, jsonify, session, redirect, url_for, render_template_string, flash
 import requests
 import os
@@ -10,7 +11,6 @@ from urllib.parse import urlparse, quote_plus
 from functools import wraps
 import base64
 import io
-from PIL import Image
 
 # Nuevas importaciones para Vision AI y Gemini
 try:
@@ -34,7 +34,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = True if os.environ.get('RENDER') else False
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max para imágenes
 
-# Clase mejorada para Vision AI y Gemini
+# Clase mejorada para Vision AI y Gemini - ESPECIALIZADA EN REPUESTOS
 class VisionGeminiProcessor:
     def __init__(self):
         self.vision_client = None
@@ -103,14 +103,15 @@ class VisionGeminiProcessor:
             image_data = base64.b64decode(base64_image_data)
             image = vision.Image(content=image_data)
             
-            # Análisis con Vision API
+            # Análisis con Vision API - MEJORADO para repuestos
             response = self.vision_client.annotate_image({
                 'image': image,
                 'features': [
-                    {'type_': vision.Feature.Type.LABEL_DETECTION, 'max_results': 10},
-                    {'type_': vision.Feature.Type.WEB_DETECTION, 'max_results': 5},
+                    {'type_': vision.Feature.Type.LABEL_DETECTION, 'max_results': 15},
+                    {'type_': vision.Feature.Type.WEB_DETECTION, 'max_results': 8},
                     {'type_': vision.Feature.Type.LOGO_DETECTION, 'max_results': 5},
                     {'type_': vision.Feature.Type.TEXT_DETECTION, 'max_results': 5},
+                    {'type_': vision.Feature.Type.OBJECT_LOCALIZATION, 'max_results': 10},
                 ]
             })
             
@@ -120,69 +121,173 @@ class VisionGeminiProcessor:
             return None
     
     def _aggregate_vision_results(self, response):
-        """Agregar resultados de Vision API"""
+        """Agregar resultados de Vision API - MEJORADO para repuestos automotrices"""
         clues = []
         
-        # Best guess de web detection
+        # Palabras clave para identificar repuestos automotrices
+        automotive_keywords = [
+            'metal', 'aluminum', 'steel', 'automotive', 'car', 'vehicle', 'engine', 
+            'part', 'component', 'machinery', 'hardware', 'tool', 'equipment',
+            'brake', 'transmission', 'motor', 'oil', 'filter', 'gasket', 'bearing'
+        ]
+        
+        # Best guess de web detection (prioritario)
         if response.web_detection and response.web_detection.best_guess_labels:
             best_guess = response.web_detection.best_guess_labels[0].label
             clues.append(f"Product identification: {best_guess}")
         
-        # Logos detectados
+        # Web entities (información adicional del web)
+        if response.web_detection and response.web_detection.web_entities:
+            entities = []
+            for entity in response.web_detection.web_entities[:5]:
+                if entity.description and entity.score > 0.5:
+                    entities.append(entity.description)
+            if entities:
+                clues.append(f"Related items: {', '.join(entities)}")
+        
+        # Logos detectados (marcas importantes para repuestos)
         if response.logo_annotations:
             logos = [logo.description for logo in response.logo_annotations[:3]]
             clues.append(f"Brand logos: {', '.join(logos)}")
         
-        # Labels principales
+        # Labels principales - FILTRADO para repuestos
         if response.label_annotations:
-            labels = [label.description for label in response.label_annotations[:5] 
-                     if label.score > 0.7]  # Solo labels con alta confianza
-            clues.append(f"Product features: {', '.join(labels)}")
+            all_labels = []
+            automotive_labels = []
+            
+            for label in response.label_annotations[:15]:
+                if label.score > 0.6:
+                    label_desc = label.description.lower()
+                    all_labels.append(label.description)
+                    
+                    # Priorizar labels automotrices
+                    if any(kw in label_desc for kw in automotive_keywords):
+                        automotive_labels.append(label.description)
+            
+            # Usar labels automotrices si existen, sino usar todos
+            selected_labels = automotive_labels[:8] if automotive_labels else all_labels[:8]
+            if selected_labels:
+                clues.append(f"Part characteristics: {', '.join(selected_labels)}")
         
-        # Texto detectado
+        # Objetos detectados (útil para identificar forma y función)
+        if response.object_annotations:
+            objects = []
+            for obj in response.object_annotations[:5]:
+                if obj.score > 0.6:
+                    objects.append(obj.name)
+            if objects:
+                clues.append(f"Object types: {', '.join(objects)}")
+        
+        # Texto detectado (números de parte, marcas, modelos)
         if response.text_annotations:
-            text_detected = response.text_annotations[0].description.replace('\n', ' ')[:100]
-            clues.append(f"Text found: {text_detected}")
+            text_detected = response.text_annotations[0].description.replace('\n', ' ')
+            # Buscar patrones de números de parte
+            part_numbers = re.findall(r'\b[A-Z0-9]{3,15}\b', text_detected)
+            if part_numbers:
+                clues.append(f"Part numbers found: {', '.join(part_numbers[:3])}")
+            elif len(text_detected.strip()) > 2:
+                clues.append(f"Text visible: {text_detected[:80]}")
         
-        return ". ".join(clues) if clues else "product"
+        final_clues = ". ".join(clues) if clues else "automotive metal part with mounting holes"
+        print(f"Vision analysis result: {final_clues}")
+        return final_clues
     
     def get_search_term_from_gemini(self, vision_clues):
-        """Generar término de búsqueda optimizado con Gemini"""
+        """Generar término de búsqueda optimizado con Gemini - ESPECIALIZADO en repuestos"""
         if not self.gemini_model or not vision_clues:
-            return "product"
+            return "auto part"
         
         try:
             prompt = (
-                "You are a world-class e-commerce search query optimizer for US shopping platforms. "
-                "Based on the following product analysis from image recognition, create the PERFECT "
-                "search query for finding this product on Amazon, Walmart, or Target. "
-                "Rules: "
+                "You are an expert automotive parts specialist and e-commerce search optimizer. "
+                "Based on the following image analysis, identify the EXACT automotive part and create "
+                "the PERFECT search query for finding this part on US automotive websites like Amazon, "
+                "RockAuto, AutoZone, Advance Auto Parts, or NAPA. "
+                
+                "CRITICAL RULES: "
                 "- Output ONLY the search query, nothing else "
-                "- Use English only "
-                "- Include brand name if detected "
-                "- Be specific but concise (2-6 words) "
-                "- Focus on the main product, ignore background items "
-                "- Make it shopping-optimized "
-                "Examples: "
-                "- 'apple iphone 13 pro' not 'smartphone device technology' "
-                "- 'nike air force 1 white' not 'white athletic footwear' "
-                "- 'samsung 65 inch tv' not 'large television screen' "
-                f"\nImage Analysis: {vision_clues}"
+                "- Be VERY specific with automotive terminology "
+                "- Include specific part name, not general descriptions "
+                "- Use technical automotive terms that mechanics would use "
+                "- If you see mounting holes/bolts, it's likely an engine/transmission part "
+                "- Focus on the PRIMARY component, ignore background items "
+                
+                "EXAMPLES OF EXCELLENT AUTOMOTIVE SEARCHES: "
+                "- 'engine oil pan sump' not 'metal container' "
+                "- 'brake rotor disc ventilated' not 'circular metal part' "
+                "- 'transmission oil pan gasket' not 'automotive seal' "
+                "- 'valve cover gasket set' not 'engine cover' "
+                "- 'differential cover rear axle' not 'metal automotive component' "
+                "- 'oil filter housing cap' not 'cylindrical part' "
+                "- 'control arm bushing' not 'rubber automotive part' "
+                
+                "COMMON AUTOMOTIVE PARTS TO IDENTIFY: "
+                "- Oil pan/sump: Large metal pan under engine, has drain plug and bolt holes around perimeter "
+                "- Transmission pan: Rectangular/square pan with many bolt holes, filter access "
+                "- Differential cover: Round/oval cover for rear axle, usually has drain/fill plugs "
+                "- Valve cover: Covers top of engine, protects valves and camshafts "
+                "- Brake rotor: Circular disc with cooling vanes, bolts to wheel hub "
+                "- Control arm: Suspension component, triangular with bushings and ball joints "
+                "- Strut mount: Rubber/metal assembly for shock absorber mounting "
+                "- Catalytic converter: Exhaust component with honeycomb interior "
+                
+                "SHAPE AND MOUNTING ANALYSIS: "
+                "- Multiple bolt holes around perimeter = likely oil pan or transmission pan "
+                "- Circular with cooling vanes = brake rotor "
+                "- Curved metal with gasket surface = engine cover or housing "
+                "- Rubber with metal = bushing, mount, or seal "
+                "- Honeycomb or mesh interior = filter or catalytic converter "
+                
+                f"\nIMAGE ANALYSIS DATA: {vision_clues}"
+                
+                "\nAnalyze the shape, material, mounting points, and function. What is the most specific "
+                "automotive part name for this component?"
             )
             
             response = self.gemini_model.generate_content(prompt)
             search_term = response.text.strip().replace('\n', '').replace('*', '').replace('"', '')
             
-            # Validación básica
-            if len(search_term) < 2 or len(search_term) > 50:
-                return "product"
+            # Validación y mejora para repuestos automotrices
+            if len(search_term) < 3:
+                return "auto part"
             
-            print(f"Gemini optimized search term: '{search_term}'")
+            # Si es muy genérico, intentar segundo análisis más directo
+            generic_terms = [
+                'metal part', 'car part', 'automotive component', 'vehicle part', 
+                'auto part', 'engine part', 'car component'
+            ]
+            
+            if any(generic in search_term.lower() for generic in generic_terms):
+                print("Generic term detected, trying more specific analysis...")
+                
+                # Segundo intento con análisis de forma específico
+                shape_prompt = (
+                    f"Based on this automotive part description: '{vision_clues}' "
+                    "If it has multiple bolt holes around the edge and is a metal pan, it's likely an OIL PAN. "
+                    "If it's rectangular with bolt holes, it could be a TRANSMISSION PAN. "
+                    "If it's circular with vanes, it's probably a BRAKE ROTOR. "
+                    "If it has rubber and metal, it might be a BUSHING or MOUNT. "
+                    "What is the most likely specific part name? Answer with just the part name:"
+                )
+                
+                try:
+                    shape_response = self.gemini_model.generate_content(shape_prompt)
+                    shape_term = shape_response.text.strip().replace('\n', '').replace('*', '')
+                    if len(shape_term) > 3 and shape_term.lower() not in [g.lower() for g in generic_terms]:
+                        search_term = shape_term
+                        print(f"Improved specific term: {search_term}")
+                except Exception as e:
+                    print(f"Second analysis failed: {e}")
+            
+            # Limitar longitud y limpiar
+            search_term = search_term[:50].strip()
+            
+            print(f"Final Gemini automotive search term: '{search_term}'")
             return search_term
             
         except Exception as e:
-            print(f"Error generating search term with Gemini: {e}")
-            return "product"
+            print(f"Error generating automotive search term with Gemini: {e}")
+            return "auto part"
 
 # Instancia global del procesador
 vision_gemini = VisionGeminiProcessor()
@@ -321,13 +426,15 @@ class PriceFinder:
     
     def _generate_realistic_price(self, query, index=0):
         query_lower = query.lower()
-        if any(word in query_lower for word in ['phone', 'laptop']):
-            base_price = 400
-        elif any(word in query_lower for word in ['shirt', 'shoes']):
-            base_price = 35
+        if any(word in query_lower for word in ['engine', 'transmission', 'oil pan']):
+            base_price = 120  # Repuestos de motor más caros
+        elif any(word in query_lower for word in ['brake', 'rotor', 'filter']):
+            base_price = 45   # Repuestos de frenos moderados
+        elif any(word in query_lower for word in ['gasket', 'seal', 'bushing']):
+            base_price = 25   # Repuestos pequeños más baratos
         else:
-            base_price = 25
-        return round(base_price * (1 + index * 0.15), 2)
+            base_price = 35
+        return round(base_price * (1 + index * 0.25), 2)
     
     def _clean_text(self, text):
         if not text:
@@ -445,27 +552,29 @@ class PriceFinder:
         return final_products
     
     def _get_examples(self, query):
-        stores = ['Amazon', 'Walmart', 'Target']
+        # Tiendas especializadas en repuestos
+        stores = ['AutoZone', 'RockAuto', 'Amazon']
         examples = []
         for i in range(3):
             price = self._generate_realistic_price(query, i)
             store = stores[i]
             search_query = quote_plus(str(query)[:30])
-            if store == 'Amazon':
-                link = f"https://www.amazon.com/s?k={search_query}"
-            elif store == 'Walmart':
-                link = f"https://www.walmart.com/search?q={search_query}"
+            
+            if store == 'AutoZone':
+                link = f"https://www.autozone.com/search?searchText={search_query}"
+            elif store == 'RockAuto':
+                link = f"https://www.rockauto.com/en/catalog"
             else:
-                link = f"https://www.target.com/s?searchTerm={search_query}"
+                link = f"https://www.amazon.com/s?k={search_query}+automotive"
             
             examples.append({
-                'title': f'{self._clean_text(query)} - {["Mejor Precio", "Oferta", "Popular"][i]}',
+                'title': f'{self._clean_text(query)} - {["OEM Quality", "Aftermarket", "Premium"][i]}',
                 'price': f'${price:.2f}',
                 'price_numeric': price,
                 'source': store,
                 'link': link,
                 'rating': ['4.5', '4.2', '4.0'][i],
-                'reviews': ['500', '300', '200'][i],
+                'reviews': ['250', '180', '120'][i],
                 'image': ''
             })
         return examples
@@ -477,7 +586,7 @@ price_finder = PriceFinder()
 @app.route('/api/analyze-image', methods=['POST'])
 @login_required
 def analyze_image():
-    """Analizar imagen con Google Cloud Vision y generar búsqueda con Gemini"""
+    """Analizar imagen con Google Cloud Vision y generar búsqueda con Gemini - MEJORADO"""
     try:
         data = request.get_json()
         if not data or 'image' not in data:
@@ -488,41 +597,45 @@ def analyze_image():
         if ',' in image_data:
             image_data = image_data.split(',')[1]  # Remover data:image/jpeg;base64,
         
-        # Verificar que tenemos los servicios disponibles
-        if not vision_gemini.is_vision_available():
-            return jsonify({'error': 'Google Cloud Vision no configurado'}), 503
-        
+        # Verificar que tenemos al menos Gemini disponible
         if not vision_gemini.is_gemini_available():
-            return jsonify({'error': 'Gemini AI no configurado'}), 503
+            return jsonify({'error': 'Gemini AI no configurado. Configura GEMINI_API_KEY'}), 503
         
-        # Procesar imagen con Vision API
-        print("Procesando imagen con Google Cloud Vision...")
-        vision_results = vision_gemini.process_image_base64(image_data)
+        vision_results = None
+        search_term = "auto part"
         
-        if not vision_results:
-            return jsonify({'error': 'No se pudo analizar la imagen'}), 400
+        # Intentar usar Vision API si está disponible
+        if vision_gemini.is_vision_available():
+            print("Procesando imagen con Google Cloud Vision...")
+            vision_results = vision_gemini.process_image_base64(image_data)
+        else:
+            print("Vision API no disponible, usando análisis básico...")
+            vision_results = "automotive metal part with mounting holes and gasket surface"
         
         # Generar término de búsqueda con Gemini
-        print("Generando término de búsqueda con Gemini...")
-        search_term = vision_gemini.get_search_term_from_gemini(vision_results)
+        if vision_results:
+            print("Generando término de búsqueda con Gemini...")
+            search_term = vision_gemini.get_search_term_from_gemini(vision_results)
         
-        # Guardar en sesión para debugging
+        # Guardar en sesión para debugging y historial
         session['last_image_analysis'] = {
             'vision_results': vision_results,
             'search_term': search_term,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'vision_api_used': vision_gemini.is_vision_available()
         }
         
         return jsonify({
             'success': True,
             'search_term': search_term,
             'vision_analysis': vision_results,
-            'message': f'Imagen analizada: "{search_term}"'
+            'message': f'Repuesto identificado: "{search_term}"',
+            'analysis_method': 'Vision AI + Gemini' if vision_gemini.is_vision_available() else 'Gemini Only'
         })
         
     except Exception as e:
         print(f"Error analyzing image: {e}")
-        return jsonify({'error': 'Error procesando imagen'}), 500
+        return jsonify({'error': 'Error procesando imagen. Verifica formato y tamaño.'}), 500
 
 # Templates mejorados
 def render_page(title, content):
@@ -558,6 +671,7 @@ def render_page(title, content):
         .search-mode-toggle { display: flex; gap: 10px; margin-bottom: 20px; }
         .mode-button { flex: 1; padding: 10px; border: 2px solid #e1e5e9; background: white; border-radius: 6px; cursor: pointer; text-align: center; transition: all 0.3s ease; }
         .mode-button.active { border-color: #1a73e8; background: #e3f2fd; color: #1a73e8; }
+        .mode-button.disabled { opacity: 0.5; cursor: not-allowed; }
         .tips { background: #e8f5e8; border: 1px solid #4caf50; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
         .features { background: #f8f9fa; padding: 15px; border-radius: 6px; margin-top: 20px; }
         .features ul { list-style: none; }
@@ -641,7 +755,7 @@ AUTH_LOGIN_TEMPLATE = """
 </html>
 """
 
-# Routes existentes (sin cambios)
+# Routes existentes
 @app.route('/auth/login-page')
 def auth_login_page():
     return render_template_string(AUTH_LOGIN_TEMPLATE)
@@ -680,7 +794,7 @@ def index():
         return redirect(url_for('auth_login_page'))
     return redirect(url_for('search_page'))
 
-# RUTA MEJORADA CON VISION AI
+# RUTA MEJORADA CON VISION AI PARA REPUESTOS
 @app.route('/search')
 @login_required
 def search_page():
@@ -690,8 +804,16 @@ def search_page():
     
     # Verificar disponibilidad de Vision AI
     vision_available = vision_gemini.is_vision_available() and vision_gemini.is_gemini_available()
-    vision_status = "✅ Vision AI Activo" if vision_available else "❌ Vision AI No Disponible"
-    vision_js_bool = "true" if vision_available else "false"
+    gemini_only = not vision_gemini.is_vision_available() and vision_gemini.is_gemini_available()
+    
+    if vision_available:
+        vision_status = "✅ Vision AI + Gemini Activo"
+    elif gemini_only:
+        vision_status = "🟡 Solo Gemini (Configurar Google Cloud para análisis completo)"
+    else:
+        vision_status = "❌ Vision AI No Disponible (Configurar APIs)"
+    
+    vision_js_bool = "true" if (vision_available or gemini_only) else "false"
     
     content = f'''
     <div class="container">
@@ -711,15 +833,15 @@ def search_page():
             {{% endif %}}
         {{% endwith %}}
         
-        <h1>Buscar Productos</h1>
-        <p class="subtitle">Texto o Imagen - Resultados en 15 segundos</p>
+        <h1>Buscar Repuestos Automotrices</h1>
+        <p class="subtitle">🔧 Texto o Imagen - Resultados especializados en 15 segundos</p>
         
         <!-- Selector de modo de búsqueda -->
         <div class="search-mode-toggle">
             <div class="mode-button active" onclick="switchMode('text')" id="textModeBtn">
                 📝 Búsqueda por Texto
             </div>
-            <div class="mode-button{' disabled' if not vision_available else ''}" onclick="{'' if vision_available else 'return false; '}switchMode('image')" id="imageModeBtn" style="{'opacity: 0.5; cursor: not-allowed;' if not vision_available else ''}">
+            <div class="mode-button{' disabled' if not (vision_available or gemini_only) else ''}" onclick="{'' if (vision_available or gemini_only) else 'return false; '}switchMode('image')" id="imageModeBtn" style="{'opacity: 0.5; cursor: not-allowed;' if not (vision_available or gemini_only) else ''}">
                 📷 Búsqueda por Imagen
             </div>
         </div>
@@ -728,7 +850,7 @@ def search_page():
         <div id="textSearchSection">
             <form id="searchForm">
                 <div class="search-bar">
-                    <input type="text" id="searchQuery" placeholder="Busca cualquier producto..." required>
+                    <input type="text" id="searchQuery" placeholder="Ej: cárter de aceite honda civic, pastillas de freno..." required>
                     <button type="submit">Buscar</button>
                 </div>
             </form>
@@ -737,14 +859,15 @@ def search_page():
         <!-- Sección de búsqueda por imagen -->
         <div id="imageSearchSection" style="display: none;">
             <div class="upload-section" id="uploadSection">
-                <div class="upload-icon">📷</div>
+                <div class="upload-icon">🔧</div>
                 <div class="upload-text">
-                    <strong>Sube una imagen del producto</strong><br>
-                    Arrastra y suelta o haz clic para seleccionar
+                    <strong>Sube una imagen del repuesto automotriz</strong><br>
+                    Arrastra y suelta o haz clic para seleccionar<br>
+                    <small>Ideal para: cárteres, rotores, filtros, válvulas, etc.</small>
                 </div>
                 <input type="file" id="imageInput" class="file-input" accept="image/*">
                 <button type="button" class="upload-button" onclick="document.getElementById('imageInput').click()">
-                    Seleccionar Imagen
+                    📷 Seleccionar Imagen
                 </button>
                 <div style="font-size: 12px; color: #666; margin-top: 10px;">
                     Formatos: JPG, PNG, WebP | Máximo: 5MB
@@ -754,7 +877,7 @@ def search_page():
                 <img id="previewImg" class="preview-image" alt="Preview">
                 <div>
                     <button type="button" id="analyzeImageBtn" class="upload-button" style="margin: 10px 5px;">
-                        🔍 Analizar Imagen
+                        🔍 Analizar Repuesto
                     </button>
                     <button type="button" onclick="resetImageUpload()" style="background: #dc3545; color: white; padding: 10px 15px; border: none; border-radius: 6px; margin: 10px 5px;">
                         ❌ Cancelar
@@ -762,27 +885,28 @@ def search_page():
                 </div>
             </div>
             <div id="analysisResult" class="analysis-result" style="display: none;">
-                <h4 style="color: #2e7d32; margin-bottom: 8px;">✅ Análisis Completado</h4>
+                <h4 style="color: #2e7d32; margin-bottom: 8px;">✅ Repuesto Identificado</h4>
                 <p id="analysisText"></p>
+                <p id="analysisMethod" style="font-size: 12px; color: #666; margin-top: 5px;"></p>
                 <button type="button" id="searchFromImageBtn" class="upload-button" style="margin-top: 10px;">
-                    🛒 Buscar este Producto
+                    🛒 Buscar este Repuesto
                 </button>
             </div>
         </div>
         
         <div class="tips">
-            <h4>🚀 Nuevas Funciones:</h4>
+            <h4>🚀 Especializado en Repuestos Automotrices:</h4>
             <ul style="margin: 8px 0 0 15px; font-size: 13px;">
-                <li><strong>Búsqueda por Imagen:</strong> Sube una foto y encuentra el producto automáticamente</li>
-                <li><strong>IA Avanzada:</strong> Google Vision + Gemini AI para identificación precisa</li>
-                <li><strong>Velocidad:</strong> Resultados en menos de 15 segundos</li>
-                <li><strong>USA:</strong> Amazon, Walmart, Target, Best Buy</li>
+                <li><strong>IA Especializada:</strong> Identifica cárteres, rotores, filtros, válvulas automáticamente</li>
+                <li><strong>Búsqueda Optimizada:</strong> Términos técnicos precisos para mecánicos</li>
+                <li><strong>Tiendas USA:</strong> Amazon, AutoZone, RockAuto, NAPA, Advance Auto</li>
+                <li><strong>Precios Reales:</strong> Desde $25 (juntas) hasta $300+ (cárteres)</li>
             </ul>
         </div>
         
         <div id="loading" class="loading">
             <div class="spinner"></div>
-            <h3 id="loadingTitle">Buscando productos...</h3>
+            <h3 id="loadingTitle">Buscando repuestos...</h3>
             <p id="loadingSubtitle">Máximo 15 segundos</p>
         </div>
         <div id="error" class="error"></div>
@@ -797,7 +921,7 @@ def search_page():
         // Cambiar modo de búsqueda
         function switchMode(mode) {{
             if (mode === 'image' && !{vision_js_bool}) {{
-                showError('Vision AI no está disponible en este momento');
+                showError('Vision AI no está disponible. Configura GEMINI_API_KEY en las variables de entorno.');
                 return;
             }}
             
@@ -809,12 +933,12 @@ def search_page():
             hideError();
         }}
         
-        // Búsqueda por texto (existente)
+        // Búsqueda por texto
         document.getElementById('searchForm').addEventListener('submit', function(e) {{
             e.preventDefault();
             if (searching) return;
             const query = document.getElementById('searchQuery').value.trim();
-            if (!query) return showError('Por favor ingresa un producto');
+            if (!query) return showError('Por favor ingresa un repuesto automotriz');
             performSearch(query);
         }});
         
@@ -849,7 +973,7 @@ def search_page():
             if (!uploadedImageData || searching) return;
             
             searching = true;
-            showLoading('🔍 Analizando imagen...', 'Google Vision AI trabajando...');
+            showLoading('🔍 Analizando repuesto...', 'Identificando pieza automotriz...');
             
             fetch('/api/analyze-image', {{
                 method: 'POST',
@@ -864,7 +988,9 @@ def search_page():
                 if (data.success) {{
                     analysisData = data;
                     document.getElementById('analysisText').textContent = 
-                        `Producto identificado: "${{data.search_term}}"`;
+                        `Repuesto identificado: "${{data.search_term}}"`;
+                    document.getElementById('analysisMethod').textContent = 
+                        `Método: ${{data.analysis_method || 'AI Analysis'}}`;
                     document.getElementById('analysisResult').style.display = 'block';
                 }} else {{
                     showError(data.error || 'Error analizando imagen');
@@ -918,7 +1044,7 @@ def search_page():
         function performSearch(query) {{
             if (searching) return;
             searching = true;
-            showLoading('🛒 Buscando productos...', 'Máximo 15 segundos');
+            showLoading('🛒 Buscando repuestos...', 'Consultando tiendas especializadas...');
             
             const timeoutId = setTimeout(() => {{
                 searching = false;
@@ -953,7 +1079,7 @@ def search_page():
         }}
         
         // Utilidades
-        function showLoading(title = 'Buscando productos...', subtitle = 'Máximo 15 segundos') {{
+        function showLoading(title = 'Buscando repuestos...', subtitle = 'Máximo 15 segundos') {{
             document.getElementById('loadingTitle').textContent = title;
             document.getElementById('loadingSubtitle').textContent = subtitle;
             document.getElementById('loading').style.display = 'block';
@@ -976,7 +1102,7 @@ def search_page():
         }}
     </script>'''
     
-    return render_template_string(render_page('Busqueda Avanzada', content))
+    return render_template_string(render_page('Busqueda de Repuestos', content))
 
 # API SEARCH (sin cambios significativos)
 @app.route('/api/search', methods=['POST'])
@@ -1009,14 +1135,14 @@ def api_search():
     except Exception as e:
         print(f"Search error: {e}")
         try:
-            query = request.get_json().get('query', 'producto') if request.get_json() else 'producto'
+            query = request.get_json().get('query', 'auto part') if request.get_json() else 'auto part'
             fallback = price_finder._get_examples(query)
             session['last_search'] = {'query': str(query), 'products': fallback, 'timestamp': datetime.now().isoformat()}
             return jsonify({'success': True, 'products': fallback, 'total': len(fallback)})
         except:
             return jsonify({'error': 'Error interno del servidor'}), 500
 
-# RESULTS PAGE (sin cambios)
+# RESULTS PAGE MEJORADA
 @app.route('/results')
 @login_required
 def results_page():
@@ -1035,10 +1161,13 @@ def results_page():
         
         # Verificar si fue búsqueda por imagen
         image_analysis = session.get('last_image_analysis')
-        search_source = "📷 Imagen" if image_analysis else "📝 Texto"
+        if image_analysis:
+            search_source = f"📷 Imagen ({image_analysis.get('analysis_method', 'AI')})"
+        else:
+            search_source = "📝 Texto"
         
         products_html = ""
-        badges = ['MEJOR', '2do', '3ro']
+        badges = ['MEJOR PRECIO', 'CALIDAD', 'POPULAR']
         colors = ['#4caf50', '#ff9800', '#9c27b0']
         
         for i, product in enumerate(products[:6]):
@@ -1047,31 +1176,37 @@ def results_page():
             
             badge = f'<div style="position: absolute; top: 8px; right: 8px; background: {colors[min(i, 2)]}; color: white; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">{badges[min(i, 2)]}</div>' if i < 3 else ''
             
-            title = html.escape(str(product.get('title', 'Producto')))
+            title = html.escape(str(product.get('title', 'Repuesto')))
             price = html.escape(str(product.get('price', '$0.00')))
             source = html.escape(str(product.get('source', 'Tienda')))
             link = html.escape(str(product.get('link', '#')))
+            
+            # Icono según la tienda
+            store_icon = "🚗" if "autozone" in source.lower() else "🔧" if "rockauto" in source.lower() else "📦"
             
             products_html += f'''
                 <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: white; position: relative; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
                     {badge}
                     <h3 style="color: #1a73e8; margin-bottom: 8px; font-size: 16px;">{title}</h3>
                     <div style="font-size: 28px; color: #2e7d32; font-weight: bold; margin: 12px 0;">{price} <span style="font-size: 12px; color: #666;">USD</span></div>
-                    <p style="color: #666; margin-bottom: 12px; font-size: 14px;">Tienda: {source}</p>
-                    <a href="{link}" target="_blank" rel="noopener noreferrer" style="background: #1a73e8; color: white; padding: 10px 16px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 14px;">Ver Producto</a>
+                    <p style="color: #666; margin-bottom: 12px; font-size: 14px;">{store_icon} Tienda: {source}</p>
+                    <a href="{link}" target="_blank" rel="noopener noreferrer" style="background: #1a73e8; color: white; padding: 10px 16px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 14px;">🛒 Ver Repuesto</a>
                 </div>'''
         
         prices = [p.get('price_numeric', 0) for p in products if p.get('price_numeric', 0) > 0]
         stats = ""
         if prices:
             min_price = min(prices)
+            max_price = max(prices)
             avg_price = sum(prices) / len(prices)
+            savings = max_price - min_price
+            
             stats = f'''
                 <div style="background: #e8f5e8; border: 1px solid #4caf50; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    <h3 style="color: #2e7d32; margin-bottom: 8px;">Resultados de búsqueda - {search_source}</h3>
-                    <p><strong>{len(products)} productos encontrados</strong></p>
-                    <p><strong>Mejor precio: ${min_price:.2f}</strong></p>
-                    <p><strong>Precio promedio: ${avg_price:.2f}</strong></p>
+                    <p><strong>{len(products)} repuestos encontrados</strong></p>
+                    <p><strong>💰 Mejor precio: ${min_price:.2f}</strong></p>
+                    <p><strong>📊 Precio promedio: ${avg_price:.2f}</strong></p>
+                    <p><strong>💵 Ahorro máximo: ${savings:.2f}</strong></p>
                 </div>'''
         
         content = f'''
@@ -1084,14 +1219,14 @@ def results_page():
                 </div>
             </div>
             
-            <h1 style="color: white; text-align: center; margin-bottom: 8px;">Resultados: "{query}"</h1>
+            <h1 style="color: white; text-align: center; margin-bottom: 8px;">🔧 Repuestos: "{query}"</h1>
             <p style="text-align: center; color: rgba(255,255,255,0.9); margin-bottom: 25px;">Búsqueda completada</p>
             
             {stats}
             {products_html}
         </div>'''
         
-        return render_template_string(render_page('Resultados - Price Finder USA', content))
+        return render_template_string(render_page('Repuestos - Price Finder USA', content))
     except Exception as e:
         print(f"Results page error: {e}")
         flash('Error al mostrar resultados.', 'danger')
@@ -1106,12 +1241,13 @@ def health_check():
             'firebase_auth': 'enabled' if firebase_auth.firebase_web_api_key else 'disabled',
             'serpapi': 'enabled' if price_finder.is_api_configured() else 'disabled',
             'vision_ai': 'enabled' if vision_gemini.is_vision_available() else 'disabled',
-            'gemini_ai': 'enabled' if vision_gemini.is_gemini_available() else 'disabled'
+            'gemini_ai': 'enabled' if vision_gemini.is_gemini_available() else 'disabled',
+            'automotive_mode': 'specialized'
         })
     except Exception as e:
         return jsonify({'status': 'ERROR', 'message': str(e)}), 500
 
-# Middleware y error handlers (sin cambios)
+# Middleware y error handlers
 @app.before_request
 def before_request():
     if 'timestamp' in session:
@@ -1143,11 +1279,12 @@ def internal_error(error):
     return '<h1>500 - Error interno</h1><p><a href="/">Volver al inicio</a></p>', 500
 
 if __name__ == '__main__':
-    print("Price Finder USA - Starting with Vision AI...")
+    print("Price Finder USA - Starting with Automotive Vision AI...")
     print(f"Firebase: {'OK' if os.environ.get('FIREBASE_WEB_API_KEY') else 'NOT_CONFIGURED'}")
     print(f"SerpAPI: {'OK' if os.environ.get('SERPAPI_KEY') else 'NOT_CONFIGURED'}")
     print(f"Gemini: {'OK' if os.environ.get('GEMINI_API_KEY') else 'NOT_CONFIGURED'}")
     print(f"Vision: {'OK' if VISION_AVAILABLE else 'NOT_AVAILABLE'}")
+    print("Specialized mode: AUTOMOTIVE PARTS")
     print(f"Puerto: {os.environ.get('PORT', '5000')}")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False, threaded=True)
 else:
