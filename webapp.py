@@ -1,5 +1,4 @@
 # app.py - Price Finder USA con Firebase Auth, SerpAPI, Google Cloud Vision y Gemini
-# VERSIÓN MEJORADA PARA REPUESTOS AUTOMOTRICES
 from flask import Flask, request, jsonify, session, redirect, url_for, render_template_string, flash
 import requests
 import os
@@ -18,23 +17,23 @@ try:
     VISION_AVAILABLE = True
 except ImportError:
     VISION_AVAILABLE = False
-    print("WARNING: google-cloud-vision no disponible. Instala con: pip install google-cloud-vision")
+    print("WARNING: google-cloud-vision no disponible")
 
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
-    print("WARNING: google-generativeai no disponible. Instala con: pip install google-generativeai")
+    print("WARNING: google-generativeai no disponible")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'fallback-key-change-in-production')
 app.config['PERMANENT_SESSION_LIFETIME'] = 1800
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = True if os.environ.get('RENDER') else False
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max para imágenes
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
 
-# Clase mejorada para Vision AI y Gemini - ESPECIALIZADA EN REPUESTOS
+# Clase mejorada para Vision AI y Gemini
 class VisionGeminiProcessor:
     def __init__(self):
         self.vision_client = None
@@ -43,16 +42,13 @@ class VisionGeminiProcessor:
         self.setup_gemini()
     
     def setup_vision(self):
-        """Configurar Google Cloud Vision"""
         if not VISION_AVAILABLE:
             print("WARNING: Google Cloud Vision no disponible")
             return False
         
         try:
-            # Verificar si hay credenciales de servicio
             service_account_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON')
             if service_account_json:
-                # Si las credenciales están como JSON string en variable de entorno
                 import json
                 import tempfile
                 credentials_info = json.loads(service_account_json)
@@ -68,7 +64,6 @@ class VisionGeminiProcessor:
             return False
     
     def setup_gemini(self):
-        """Configurar Gemini AI"""
         if not GEMINI_AVAILABLE:
             print("WARNING: Gemini AI no disponible")
             return False
@@ -94,16 +89,13 @@ class VisionGeminiProcessor:
         return self.gemini_model is not None
     
     def process_image_base64(self, base64_image_data):
-        """Procesar imagen en base64 con Google Cloud Vision"""
         if not self.vision_client:
             return None
         
         try:
-            # Decodificar base64
             image_data = base64.b64decode(base64_image_data)
             image = vision.Image(content=image_data)
             
-            # Análisis con Vision API - MEJORADO para repuestos
             response = self.vision_client.annotate_image({
                 'image': image,
                 'features': [
@@ -121,15 +113,12 @@ class VisionGeminiProcessor:
             return None
     
     def _aggregate_vision_results(self, response):
-        """Agregar resultados de Vision API - MEJORADO para identificación general de productos"""
         clues = []
         
-        # Best guess de web detection (prioritario)
         if response.web_detection and response.web_detection.best_guess_labels:
             best_guess = response.web_detection.best_guess_labels[0].label
             clues.append(f"Product identification: {best_guess}")
         
-        # Web entities (información adicional del web)
         if response.web_detection and response.web_detection.web_entities:
             entities = []
             for entity in response.web_detection.web_entities[:8]:
@@ -138,28 +127,24 @@ class VisionGeminiProcessor:
             if entities:
                 clues.append(f"Related items: {', '.join(entities)}")
         
-        # Logos detectados (marcas importantes)
         if response.logo_annotations:
             logos = [logo.description for logo in response.logo_annotations[:3]]
             clues.append(f"Brand logos: {', '.join(logos)}")
         
-        # Labels principales - AMPLIADO para mejor detección
         if response.label_annotations:
             high_confidence_labels = []
             medium_confidence_labels = []
             
-            for label in response.label_annotations[:20]:  # Más labels
+            for label in response.label_annotations[:20]:
                 if label.score > 0.8:
                     high_confidence_labels.append(label.description)
                 elif label.score > 0.6:
                     medium_confidence_labels.append(label.description)
             
-            # Priorizar labels de alta confianza
             selected_labels = high_confidence_labels[:6] + medium_confidence_labels[:4]
             if selected_labels:
                 clues.append(f"Product features: {', '.join(selected_labels)}")
         
-        # Objetos detectados (útil para identificar forma y función)
         if response.object_annotations:
             objects = []
             for obj in response.object_annotations[:8]:
@@ -168,10 +153,8 @@ class VisionGeminiProcessor:
             if objects:
                 clues.append(f"Object types: {', '.join(objects)}")
         
-        # Texto detectado (números de parte, marcas, modelos)
         if response.text_annotations:
             text_detected = response.text_annotations[0].description.replace('\n', ' ')
-            # Buscar patrones útiles
             important_text = re.findall(r'\b[A-Z0-9]{3,15}\b', text_detected)
             if important_text:
                 clues.append(f"Text found: {', '.join(important_text[:5])}")
@@ -183,7 +166,6 @@ class VisionGeminiProcessor:
         return final_clues
     
     def get_search_term_from_gemini(self, vision_clues):
-        """Generar término de búsqueda optimizado con Gemini - UNIVERSAL para todos los productos"""
         if not self.gemini_model or not vision_clues:
             return "product"
         
@@ -191,8 +173,7 @@ class VisionGeminiProcessor:
             prompt = (
                 "You are an expert product identification specialist and e-commerce search optimizer. "
                 "Based on the following image analysis, identify the EXACT product and create "
-                "the PERFECT search query for finding this item on US shopping websites like Amazon, "
-                "Walmart, Target, eBay, or specialized retailers. "
+                "the PERFECT search query for finding this item on US shopping websites. "
                 
                 "CRITICAL RULES: "
                 "- Output ONLY the search query, nothing else "
@@ -209,14 +190,6 @@ class VisionGeminiProcessor:
                 "- 'kitchenaid stand mixer' not 'kitchen appliance' "
                 "- 'dewalt cordless drill' not 'power tool' "
                 "- 'samsung 55 inch tv' not 'television screen' "
-                
-                "PRODUCT CATEGORIES TO CONSIDER: "
-                "- Electronics: phones, tablets, TVs, computers, headphones "
-                "- Automotive: oil pans, brake rotors, filters, engine parts "
-                "- Home & Kitchen: appliances, cookware, furniture, decor "
-                "- Fashion: shoes, clothing, accessories, watches "
-                "- Tools & Hardware: drills, screws, parts, equipment "
-                "- Sports & Outdoors: gear, equipment, apparel "
                 
                 "SHAPE AND MATERIAL ANALYSIS: "
                 "- Round metal disc with holes = likely brake rotor "
@@ -235,11 +208,9 @@ class VisionGeminiProcessor:
             response = self.gemini_model.generate_content(prompt)
             search_term = response.text.strip().replace('\n', '').replace('*', '').replace('"', '')
             
-            # Validación y mejora
             if len(search_term) < 3:
                 return "product"
             
-            # Si es muy genérico, intentar análisis más específico
             generic_terms = [
                 'product', 'item', 'object', 'thing', 'part', 'component', 
                 'metal part', 'plastic part', 'device', 'tool'
@@ -248,7 +219,6 @@ class VisionGeminiProcessor:
             if any(generic.lower() in search_term.lower() for generic in generic_terms):
                 print("Generic term detected, analyzing shape and material...")
                 
-                # Segundo análisis enfocado en características físicas
                 shape_prompt = (
                     f"Looking at this product description: '{vision_clues}' "
                     "Focus on these clues: "
@@ -269,9 +239,7 @@ class VisionGeminiProcessor:
                 except Exception as e:
                     print(f"Shape analysis failed: {e}")
             
-            # Limpiar y limitar longitud
             search_term = search_term[:50].strip()
-            
             print(f"Final search term: '{search_term}'")
             return search_term
             
@@ -279,10 +247,9 @@ class VisionGeminiProcessor:
             print(f"Error generating search term: {e}")
             return "product"
 
-# Instancia global del procesador
 vision_gemini = VisionGeminiProcessor()
 
-# Firebase Auth Class (sin cambios)
+# Firebase Auth Class
 class FirebaseAuth:
     def __init__(self):
         self.firebase_web_api_key = os.environ.get("FIREBASE_WEB_API_KEY")
@@ -350,7 +317,7 @@ class FirebaseAuth:
             try:
                 login_time = datetime.fromisoformat(session['login_time'])
                 time_diff = (datetime.now() - login_time).total_seconds()
-                if time_diff > 7200:  # 2 horas maximo
+                if time_diff > 7200:
                     return False
             except:
                 pass
@@ -377,7 +344,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Price Finder Class (sin cambios significativos)
+# Price Finder Class
 class PriceFinder:
     def __init__(self):
         self.api_key = (
@@ -392,12 +359,12 @@ class PriceFinder:
         self.cache = {}
         self.cache_ttl = 180
         self.timeouts = {'connect': 3, 'read': 8}
-        self.blacklisted_stores = ['alibaba', 'aliexpress', 'temu', 'wish', 'banggood', 'dhgate', 'falabella', 'ripley', 'linio', 'mercadolibre']
+        self.blacklisted_stores = ['alibaba', 'aliexpress', 'temu', 'wish', 'banggood', 'dhgate']
         
         if not self.api_key:
             print("WARNING: No se encontro API key en variables de entorno")
         else:
-            print(f"SUCCESS: SerpAPI configurado correctamente")
+            print("SUCCESS: SerpAPI configurado correctamente")
     
     def is_api_configured(self):
         return bool(self.api_key)
@@ -417,15 +384,15 @@ class PriceFinder:
     def _generate_realistic_price(self, query, index=0):
         query_lower = query.lower()
         if any(word in query_lower for word in ['engine', 'transmission', 'oil pan']):
-            base_price = 120  # Repuestos de motor
+            base_price = 120
         elif any(word in query_lower for word in ['brake', 'rotor', 'filter']):
-            base_price = 45   # Repuestos de frenos
+            base_price = 45
         elif any(word in query_lower for word in ['phone', 'laptop', 'tv']):
-            base_price = 350  # Electrónicos
+            base_price = 350
         elif any(word in query_lower for word in ['shoes', 'shirt', 'clothing']):
-            base_price = 35   # Ropa
+            base_price = 35
         else:
-            base_price = 25   # Productos generales
+            base_price = 25
         return round(base_price * (1 + index * 0.25), 2)
     
     def _clean_text(self, text):
@@ -544,7 +511,6 @@ class PriceFinder:
         return final_products
     
     def _get_examples(self, query):
-        # Tiendas variadas según el tipo de producto
         stores = ['Amazon', 'Walmart', 'Target']
         examples = []
         for i in range(3):
@@ -573,63 +539,52 @@ class PriceFinder:
 
 price_finder = PriceFinder()
 
-# NUEVAS RUTAS PARA VISION AI
-
 @app.route('/api/analyze-image', methods=['POST'])
 @login_required
 def analyze_image():
-    """Analizar imagen con Google Cloud Vision y generar búsqueda con Gemini - MEJORADO"""
     try:
         data = request.get_json()
         if not data or 'image' not in data:
             return jsonify({'error': 'Imagen requerida'}), 400
         
-        # Extraer datos de imagen base64
         image_data = data['image']
         if ',' in image_data:
-            image_data = image_data.split(',')[1]  # Remover data:image/jpeg;base64,
+            image_data = image_data.split(',')[1]
         
-        # Verificar que tenemos al menos Gemini disponible
         if not vision_gemini.is_gemini_available():
-            return jsonify({'error': 'Gemini AI no configurado. Configura GEMINI_API_KEY'}), 503
+            return jsonify({'error': 'Sistema de análisis no configurado'}), 503
         
         vision_results = None
-        search_term = "auto part"
+        search_term = "product"
         
-        # Intentar usar Vision API si está disponible
         if vision_gemini.is_vision_available():
-            print("Procesando imagen con Google Cloud Vision...")
+            print("Procesando imagen...")
             vision_results = vision_gemini.process_image_base64(image_data)
         else:
-            print("Vision API no disponible, usando análisis básico...")
-            vision_results = "automotive metal part with mounting holes and gasket surface"
+            print("Análisis básico...")
+            vision_results = "product with visible details and mounting features"
         
-        # Generar término de búsqueda con Gemini
         if vision_results:
-            print("Generando término de búsqueda con Gemini...")
+            print("Generando término de búsqueda...")
             search_term = vision_gemini.get_search_term_from_gemini(vision_results)
         
-        # Guardar en sesión para debugging y historial
         session['last_image_analysis'] = {
             'vision_results': vision_results,
             'search_term': search_term,
-            'timestamp': datetime.now().isoformat(),
-            'vision_api_used': vision_gemini.is_vision_available()
+            'timestamp': datetime.now().isoformat()
         }
         
         return jsonify({
             'success': True,
             'search_term': search_term,
             'vision_analysis': vision_results,
-            'message': f'Repuesto identificado: "{search_term}"',
-            'analysis_method': 'Vision AI + Gemini' if vision_gemini.is_vision_available() else 'Gemini Only'
+            'message': f'Producto identificado: "{search_term}"'
         })
         
     except Exception as e:
         print(f"Error analyzing image: {e}")
-        return jsonify({'error': 'Error procesando imagen. Verifica formato y tamaño.'}), 500
+        return jsonify({'error': 'Error procesando imagen'}), 500
 
-# Templates mejorados
 def render_page(title, content):
     template = '''<!DOCTYPE html>
 <html lang="es">
@@ -665,12 +620,7 @@ def render_page(title, content):
         .mode-button.active { border-color: #1a73e8; background: #e3f2fd; color: #1a73e8; }
         .mode-button.disabled { opacity: 0.5; cursor: not-allowed; }
         .tips { background: #e8f5e8; border: 1px solid #4caf50; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
-        .features { background: #f8f9fa; padding: 15px; border-radius: 6px; margin-top: 20px; }
-        .features ul { list-style: none; }
-        .features li { padding: 3px 0; font-size: 14px; }
-        .features li:before { content: "- "; }
         .error { background: #ffebee; color: #c62828; padding: 12px; border-radius: 6px; margin: 12px 0; display: none; }
-        .warning { background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin: 12px 0; }
         .loading { text-align: center; padding: 30px; display: none; }
         .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #1a73e8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -747,7 +697,6 @@ AUTH_LOGIN_TEMPLATE = """
 </html>
 """
 
-# Routes existentes
 @app.route('/auth/login-page')
 def auth_login_page():
     return render_template_string(AUTH_LOGIN_TEMPLATE)
@@ -761,17 +710,14 @@ def auth_login():
         flash('Por favor completa todos los campos.', 'danger')
         return redirect(url_for('auth_login_page'))
     
-    print(f"Login attempt for {email}")
     result = firebase_auth.login_user(email, password)
     
     if result['success']:
         firebase_auth.set_user_session(result['user_data'])
         flash(result['message'], 'success')
-        print(f"Successful login for {email}")
         return redirect(url_for('index'))
     else:
         flash(result['message'], 'danger')
-        print(f"Failed login for {email}")
         return redirect(url_for('auth_login_page'))
 
 @app.route('/auth/logout')
@@ -786,7 +732,6 @@ def index():
         return redirect(url_for('auth_login_page'))
     return redirect(url_for('search_page'))
 
-# RUTA MEJORADA CON VISION AI PARA REPUESTOS
 @app.route('/search')
 @login_required
 def search_page():
@@ -794,7 +739,6 @@ def search_page():
     user_name = current_user['user_name'] if current_user else 'Usuario'
     user_name_escaped = html.escape(user_name)
     
-    # Verificar disponibilidad de sistema de análisis
     analysis_available = vision_gemini.is_vision_available() and vision_gemini.is_gemini_available()
     gemini_only = not vision_gemini.is_vision_available() and vision_gemini.is_gemini_available()
     
@@ -828,7 +772,6 @@ def search_page():
         <h1>Buscar Productos</h1>
         <p class="subtitle">📝 Texto o 📷 Imagen - Resultados en 15 segundos</p>
         
-        <!-- Selector de modo de búsqueda -->
         <div class="search-mode-toggle">
             <div class="mode-button active" onclick="switchMode('text')" id="textModeBtn">
                 📝 Búsqueda por Texto
@@ -838,7 +781,6 @@ def search_page():
             </div>
         </div>
         
-        <!-- Sección de búsqueda por texto -->
         <div id="textSearchSection">
             <form id="searchForm">
                 <div class="search-bar">
@@ -848,7 +790,6 @@ def search_page():
             </form>
         </div>
         
-        <!-- Sección de búsqueda por imagen -->
         <div id="imageSearchSection" style="display: none;">
             <div class="upload-section" id="uploadSection">
                 <div class="upload-icon">📷</div>
@@ -896,7 +837,7 @@ def search_page():
         
         <div id="loading" class="loading">
             <div class="spinner"></div>
-            <h3 id="loadingTitle">Buscando repuestos...</h3>
+            <h3 id="loadingTitle">Buscando productos...</h3>
             <p id="loadingSubtitle">Máximo 15 segundos</p>
         </div>
         <div id="error" class="error"></div>
@@ -908,7 +849,6 @@ def search_page():
         let uploadedImageData = null;
         let analysisData = null;
         
-        // Cambiar modo de búsqueda
         function switchMode(mode) {{
             if (mode === 'image' && !{analysis_js_bool}) {{
                 showError('Búsqueda por imagen no está disponible en este momento');
@@ -921,14 +861,8 @@ def search_page():
             document.getElementById('textSearchSection').style.display = mode === 'text' ? 'block' : 'none';
             document.getElementById('imageSearchSection').style.display = mode === 'image' ? 'block' : 'none';
             hideError();
-        }}document.getElementById('imageModeBtn').classList.toggle('active', mode === 'image');
-            document.getElementById('imageModeBtn').classList.toggle('active', mode === 'image');
-            document.getElementById('textSearchSection').style.display = mode === 'text' ? 'block' : 'none';
-            document.getElementById('imageSearchSection').style.display = mode === 'image' ? 'block' : 'none';
-            hideError();
         }}
         
-        // Búsqueda por texto
         document.getElementById('searchForm').addEventListener('submit', function(e) {{
             e.preventDefault();
             if (searching) return;
@@ -937,7 +871,6 @@ def search_page():
             performSearch(query);
         }});
         
-        // Manejo de carga de imagen
         document.getElementById('imageInput').addEventListener('change', function(e) {{
             const file = e.target.files[0];
             if (!file) return;
@@ -963,7 +896,6 @@ def search_page():
             reader.readAsDataURL(file);
         }});
         
-        // Análisis de imagen
         document.getElementById('analyzeImageBtn').addEventListener('click', function() {{
             if (!uploadedImageData || searching) return;
             
@@ -996,13 +928,11 @@ def search_page():
             }});
         }});
         
-        // Búsqueda desde imagen analizada
         document.getElementById('searchFromImageBtn').addEventListener('click', function() {{
             if (!analysisData || searching) return;
             performSearch(analysisData.search_term);
         }});
         
-        // Drag and drop
         const uploadSection = document.getElementById('uploadSection');
         uploadSection.addEventListener('dragover', function(e) {{
             e.preventDefault();
@@ -1022,7 +952,6 @@ def search_page():
             }}
         }});
         
-        // Reset de imagen
         function resetImageUpload() {{
             uploadedImageData = null;
             analysisData = null;
@@ -1033,7 +962,6 @@ def search_page():
             hideError();
         }}
         
-        // Búsqueda unificada
         function performSearch(query) {{
             if (searching) return;
             searching = true;
@@ -1071,7 +999,6 @@ def search_page():
             }});
         }}
         
-        // Utilidades
         function showLoading(title = 'Buscando productos...', subtitle = 'Máximo 15 segundos') {{
             document.getElementById('loadingTitle').textContent = title;
             document.getElementById('loadingSubtitle').textContent = subtitle;
@@ -1097,7 +1024,6 @@ def search_page():
     
     return render_template_string(render_page('Búsqueda de Productos', content))
 
-# API SEARCH (sin cambios significativos)
 @app.route('/api/search', methods=['POST'])
 @login_required
 def api_search():
@@ -1111,8 +1037,6 @@ def api_search():
             query = query[:80]
         
         user_email = session.get('user_email', 'Unknown')
-        print(f"Search request from {user_email}: {query}")
-        
         products = price_finder.search_products(query)
         
         session['last_search'] = {
@@ -1122,20 +1046,18 @@ def api_search():
             'user': user_email
         }
         
-        print(f"Search completed for {user_email}: {len(products)} products found")
         return jsonify({'success': True, 'products': products, 'total': len(products)})
         
     except Exception as e:
         print(f"Search error: {e}")
         try:
-            query = request.get_json().get('query', 'auto part') if request.get_json() else 'auto part'
+            query = request.get_json().get('query', 'producto') if request.get_json() else 'producto'
             fallback = price_finder._get_examples(query)
             session['last_search'] = {'query': str(query), 'products': fallback, 'timestamp': datetime.now().isoformat()}
             return jsonify({'success': True, 'products': fallback, 'total': len(fallback)})
         except:
             return jsonify({'error': 'Error interno del servidor'}), 500
 
-# RESULTS PAGE MEJORADA
 @app.route('/results')
 @login_required
 def results_page():
@@ -1152,7 +1074,6 @@ def results_page():
         products = search_data.get('products', [])
         query = html.escape(str(search_data.get('query', 'busqueda')))
         
-        # Verificar si fue búsqueda por imagen
         image_analysis = session.get('last_image_analysis')
         if image_analysis:
             search_source = "📷 Imagen"
@@ -1169,12 +1090,11 @@ def results_page():
             
             badge = f'<div style="position: absolute; top: 8px; right: 8px; background: {colors[min(i, 2)]}; color: white; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">{badges[min(i, 2)]}</div>' if i < 3 else ''
             
-            title = html.escape(str(product.get('title', 'Repuesto')))
+            title = html.escape(str(product.get('title', 'Producto')))
             price = html.escape(str(product.get('price', '$0.00')))
             source = html.escape(str(product.get('source', 'Tienda')))
             link = html.escape(str(product.get('link', '#')))
             
-            # Icono según la tienda
             store_icon = "📦"
             
             products_html += f'''
@@ -1194,16 +1114,7 @@ def results_page():
             avg_price = sum(prices) / len(prices)
             savings = max_price - min_price
             
-            stats = f'''
-                <div style="background: #e8f5e8; border: 1px solid #4caf50; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            stats = f'''
-                <div style="background: #e8f5e8; border: 1px solid #4caf50; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    <h3 style="color: #2e7d32; margin-bottom: 8px;">📊 Resultados de Búsqueda - {search_source}</h3>
-                    <p><strong>{len(products)} productos encontrados</strong></p>
-                    <p><strong>💰 Mejor precio: ${min_price:.2f}</strong></p>
-                    <p><strong>📊 Precio promedio: ${avg_price:.2f}</strong></p>
-                    <p><strong>💵 Ahorro máximo: ${savings:.2f}</strong></p>
-                </div>'''
+            stats = f'<div style="background: #e8f5e8; border: 1px solid #4caf50; padding: 15px; border-radius: 8px; margin-bottom: 20px;"><h3 style="color: #2e7d32; margin-bottom: 8px;">📊 Resultados de Búsqueda - {search_source}</h3><p><strong>{len(products)} productos encontrados</strong></p><p><strong>💰 Mejor precio: ${min_price:.2f}</strong></p><p><strong>📊 Precio promedio: ${avg_price:.2f}</strong></p><p><strong>💵 Ahorro máximo: ${savings:.2f}</strong></p></div>'
         
         content = f'''
         <div style="max-width: 800px; margin: 0 auto;">
@@ -1243,7 +1154,6 @@ def health_check():
     except Exception as e:
         return jsonify({'status': 'ERROR', 'message': str(e)}), 500
 
-# Middleware y error handlers
 @app.before_request
 def before_request():
     if 'timestamp' in session:
@@ -1252,7 +1162,7 @@ def before_request():
             if isinstance(timestamp_str, str) and len(timestamp_str) > 10:
                 last_activity = datetime.fromisoformat(timestamp_str)
                 time_diff = (datetime.now() - last_activity).total_seconds()
-                if time_diff > 1200:  # 20 minutos
+                if time_diff > 1200:
                     session.clear()
         except:
             session.clear()
