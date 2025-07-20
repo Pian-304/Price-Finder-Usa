@@ -691,6 +691,7 @@ def search_page():
     # Verificar disponibilidad de Vision AI
     vision_available = vision_gemini.is_vision_available() and vision_gemini.is_gemini_available()
     vision_status = "✅ Vision AI Activo" if vision_available else "❌ Vision AI No Disponible"
+    vision_js_bool = "true" if vision_available else "false"
     
     content = f'''
     <div class="container">
@@ -718,7 +719,7 @@ def search_page():
             <div class="mode-button active" onclick="switchMode('text')" id="textModeBtn">
                 📝 Búsqueda por Texto
             </div>
-            <div class="mode-button {'style="opacity: 0.5; cursor: not-allowed;"' if not vision_available else ''}" onclick="{'return false;' if not vision_available else 'switchMode(\'image\')'}" id="imageModeBtn">
+            <div class="mode-button{' disabled' if not vision_available else ''}" onclick="{'' if vision_available else 'return false; '}switchMode('image')" id="imageModeBtn" style="{'opacity: 0.5; cursor: not-allowed;' if not vision_available else ''}">
                 📷 Búsqueda por Imagen
             </div>
         </div>
@@ -794,8 +795,8 @@ def search_page():
         let analysisData = null;
         
         // Cambiar modo de búsqueda
-        function switchMode(mode) {
-            if (mode === 'image' && !{str(vision_available).lower()}) {{
+        function switchMode(mode) {{
+            if (mode === 'image' && !{vision_js_bool}) {{
                 showError('Vision AI no está disponible en este momento');
                 return;
             }}
